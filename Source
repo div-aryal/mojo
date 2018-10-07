@@ -1,0 +1,177 @@
+// The following piece of code automatically tests the outputs produced in different states by the 1-bit full adder
+// We used FSM to alternate between the states - AON, BON, CON, ABON, BCON, ACON, ABCON
+// The first set of LEDs on the IO shield convey which state is being currently tested
+// If the output produced is right, the 2nd set of LEDs light up as a whole,
+// If the output produced is unexpected and wrong, the 3rd set of LEDs light up.
+module mojo_top (
+    input clk,              // 50MHz clock
+    input rst_n,            // reset button (active low)
+    output led [8],         // 8 user controllable LEDs
+    input cclk,             // configuration clock, AVR ready when high
+    output spi_miso,        // AVR SPI MISO
+    input spi_ss,           // AVR SPI Slave Select
+    input spi_mosi,         // AVR SPI MOSI
+    input spi_sck,          // AVR SPI Clock
+    output spi_channel [4], // AVR general purpose pins (used by default to select ADC channel)
+    input avr_tx,           // AVR TX (FPGA RX)
+    output avr_rx,          // AVR RX (FPGA TX)
+    input avr_rx_busy,      // AVR RX buffer full
+    output io_led [3][8],   // LEDs on IO Shield
+    output io_seg [8],      // 7-segment LEDs on IO Shield
+    output io_sel [4],      // Digit select on IO Shield
+    input io_button [5],    // 5 buttons on IO Shield
+    input io_dip [3][8],     // DIP switches on IO Shield
+    output a, //related to constraints name convention, P51 port to 1 switch
+    output b, //P41 port to 2 switch
+    output c, //P35 port to 3 switch
+    input sum, // p33 to out led sum(green)
+    input carry //p30 to out led carry(red)
+  ) {
+ 
+  sig rst;                  // reset signal
+  dff counter[26](.clk(clk), .rst(rst));
+ 
+  .clk(clk) {
+    // The reset conditioner is used to synchronize the reset signal to the FPGA
+    // clock. This ensures the entire FPGA comes out of reset at the same time.
+    reset_conditioner reset_cond;
+    .rst(rst) {
+      fsm state = { ALL_OFF, A_ON, B_ON, C_ON, AB_ON, BC_ON, AC_ON, ABC_ON}; //FSM will cycle between these states.
+    }
+  }
+ 
+  always {
+    reset_cond.in = ~rst_n; // input raw inverted reset signal
+    rst = reset_cond.out;   // conditioned reset
+    spi_miso = bz;          // not using SPI
+    spi_channel = bzzzz;    // not using flags
+    avr_rx = bz;            // not using serial port
+    a = 0;
+    b = 0;
+    c = 0;
+    io_led = 3x{{8h00}}; // turn LEDs off
+    led = 8hff;
+    counter.d = counter.q + 1;
+    io_seg = 8hff;          // turn segments off
+    io_sel = 4hf;           // select no digits
+   
+    case(state.q) {
+      state.ALL_OFF:
+        a = 0;
+        b = 0;
+        c = 0;
+        io_led[0][0] = 1;
+        if (sum == 0 & carry == 0) {
+            io_led[1] = 8hFF;
+          } else {
+            io_led[2] = 8hFF;
+        }
+        if(counter.q[25] == 1) { //counts using the d_latch flip flop for 25 times then moves state 
+          state.d = state.A_ON;//move state to A_ON
+          counter.d = 0;//to reset the counter         
+        }
+      state.A_ON:
+        a = 1;
+        b = 0;
+        c = 0;
+        io_led[0][1] = 1;
+        if (sum == 1 & carry == 0) {
+            io_led[1] = 8hFF;
+          } else {
+            io_led[2] = 8hFF;
+        }
+        if(counter.q[25] == 1) {
+          state.d = state.B_ON;
+          counter.d = 0;   
+        }
+      state.B_ON:
+        a = 0;
+        b = 1;
+        c = 0;
+        io_led[0][2] = 1;
+        if (sum == 1 & carry == 0) {
+            io_led[1] = 8hFF;
+          } else {
+            io_led[2] = 8hFF;
+        }
+        if(counter.q[25] == 1) {
+          state.d = state.C_ON;
+          counter.d = 0;
+        }
+      state.C_ON:
+        a = 0;
+        b = 0;
+        c = 1;
+        io_led[0][3] = 1;
+        if (sum == 1 & carry == 0) {
+            io_led[1] = 8hFF;
+          } else {
+            io_led[2] = 8hFF;
+        }
+        if(counter.q[25] == 1) {
+          state.d = state.AB_ON;
+          counter.d = 0;
+        }
+      state.AB_ON:
+        a = 1;
+        b = 1;
+        c = 0;
+        io_led[0][4] = 1;
+        led[4] = 1;
+        if (sum == 0 & carry == 1) {
+            io_led[1] = 8hFF;
+          } else {
+            io_led[2] = 8hFF;
+        }
+        if(counter.q[25] == 1) {
+          state.d = state.BC_ON;
+          counter.d = 0;
+        }
+      state.BC_ON:
+        a = 0;
+        b = 1;
+        c = 1;
+        io_led[0][5] = 1;
+        led[5] = 1;
+        if (sum == 0 & carry == 1) {
+            io_led[1] = 8hFF;
+          } else {
+            io_led[2] = 8hFF;
+        }
+        if(counter.q[25] == 1) {
+          state.d = state.AC_ON;
+          counter.d = 0;
+        }
+      state.AC_ON:
+        a = 1;
+        b = 0;
+        c = 1;
+        io_led[0][6] = 1;
+        led[6] = 1;
+        if (sum == 0 & carry == 1) {
+            io_led[1] = 8hFF;
+          } else {
+            io_led[2] = 8hFF;
+        }
+        if(counter.q[25] == 1) {
+          state.d = state.ABC_ON;
+          counter.d = 0;
+        }
+      state.ABC_ON:
+        a = 1;
+        b = 1;
+        c = 1;
+        io_led[0][7] = 1;
+        led[7] = 1;
+        if (sum == 1 & carry == 1) {
+            io_led[1] = 8hFF;
+          } else {
+            io_led[2] = 8hFF;
+        }
+        if(counter.q[25] == 1) {
+          state.d = state.ALL_OFF;
+          counter.d = 0;         
+        }
+    }
+  }
+}
